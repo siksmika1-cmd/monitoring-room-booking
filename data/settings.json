@@ -1,0 +1,90 @@
+{
+  "slotMinutes": 60,
+  "weekdaySchedules": {
+    "mon": {
+      "timeBlocks": [
+        {
+          "start": "10:00",
+          "end": "11:00"
+        },
+        {
+          "start": "11:00",
+          "end": "12:00"
+        }
+      ],
+      "enabledRoomIds": [
+        "room-2p-a",
+        "room-2p-b"
+      ]
+    },
+    "tue": {
+      "timeBlocks": [
+        {
+          "start": "10:00",
+          "end": "11:00"
+        },
+        {
+          "start": "11:00",
+          "end": "12:00"
+        }
+      ],
+      "enabledRoomIds": [
+        "room-2p-a",
+        "room-2p-b"
+      ]
+    },
+    "wed": {
+      "timeBlocks": [
+        {
+          "start": "10:00",
+          "end": "11:00"
+        },
+        {
+          "start": "11:00",
+          "end": "12:00"
+        }
+      ],
+      "enabledRoomIds": [
+        "room-2p-a",
+        "room-2p-b"
+      ]
+    },
+    "thu": {
+      "timeBlocks": [
+        {
+          "start": "10:00",
+          "end": "11:00"
+        },
+        {
+          "start": "11:00",
+          "end": "12:00"
+        }
+      ],
+      "enabledRoomIds": [
+        "room-2p-a",
+        "room-2p-b"
+      ]
+    },
+    "fri": {
+      "timeBlocks": [],
+      "enabledRoomIds": []
+    },
+    "sat": {
+      "timeBlocks": [],
+      "enabledRoomIds": [
+        "room-2p-a",
+        "room-2p-b",
+        "room-1p"
+      ]
+    },
+    "sun": {
+      "timeBlocks": [],
+      "enabledRoomIds": [
+        "room-2p-a",
+        "room-2p-b",
+        "room-1p"
+      ]
+    }
+  },
+  "updatedAt": "2026-07-06T12:32:36.399Z"
+}
