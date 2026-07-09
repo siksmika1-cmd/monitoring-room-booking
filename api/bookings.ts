@@ -6,6 +6,8 @@ import {
   getBookingsForDate,
   getMonthSeatSummary,
   lookupBooking,
+  restoreBooking,
+  updateBookingSchedule,
 } from '../server/bookingService.js'
 import type { CreateBookingInput, RoomId } from '../server/types.js'
 
@@ -49,8 +51,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const bookingId = (req.query.bookingId as string | undefined)?.trim()
         const visitorName = (req.query.visitorName as string | undefined)?.trim()
         const email = (req.query.email as string | undefined)?.trim()
-        const booking = await lookupBooking({ bookingId, visitorName, email })
-        return res.status(200).json({ booking })
+        const bookings = await lookupBooking({ bookingId, visitorName, email })
+        return res.status(200).json({ bookings })
       }
 
       return res.status(400).json({ error: '알 수 없는 action' })
@@ -61,6 +63,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         action?: string
         bookingId?: string
         cancelToken?: string
+        startAt?: string
+        endAt?: string
+        roomId?: RoomId
       } & Partial<CreateBookingInput>
 
       if (body.action === 'cancel') {
@@ -68,6 +73,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return res.status(400).json({ error: 'bookingId, cancelToken 필요' })
         }
         const booking = await cancelBooking(body.bookingId, body.cancelToken)
+        return res.status(200).json({ booking })
+      }
+
+      if (body.action === 'restore') {
+        if (!body.bookingId || !body.cancelToken) {
+          return res.status(400).json({ error: 'bookingId, cancelToken 필요' })
+        }
+        const booking = await restoreBooking(body.bookingId, body.cancelToken)
+        return res.status(200).json({ booking })
+      }
+
+      if (body.action === 'update') {
+        if (!body.bookingId || !body.cancelToken || !body.startAt || !body.endAt) {
+          return res.status(400).json({ error: 'bookingId, cancelToken, startAt, endAt 필요' })
+        }
+        const booking = await updateBookingSchedule(body.bookingId, body.cancelToken, {
+          startAt: body.startAt,
+          endAt: body.endAt,
+          roomId: body.roomId,
+        })
         return res.status(200).json({ booking })
       }
 

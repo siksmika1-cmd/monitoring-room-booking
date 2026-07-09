@@ -71,16 +71,36 @@ export async function lookupBooking(criteria: {
   if (criteria.visitorName?.trim()) params.set('visitorName', criteria.visitorName.trim())
   if (criteria.email?.trim()) params.set('email', criteria.email.trim())
 
-  const { booking } = await request<{ booking: Booking }>(
+  const { bookings } = await request<{ bookings: Booking[] }>(
     `${BOOKINGS_BASE}?${params.toString()}`,
   )
-  return booking
+  return bookings
 }
 
 export async function cancelBooking(bookingId: string, cancelToken: string) {
   const { booking } = await request<{ booking: Booking }>(BOOKINGS_BASE, {
     method: 'POST',
     body: JSON.stringify({ action: 'cancel', bookingId, cancelToken }),
+  })
+  return booking
+}
+
+export async function restoreBooking(bookingId: string, cancelToken: string) {
+  const { booking } = await request<{ booking: Booking }>(BOOKINGS_BASE, {
+    method: 'POST',
+    body: JSON.stringify({ action: 'restore', bookingId, cancelToken }),
+  })
+  return booking
+}
+
+export async function updateBookingSchedule(
+  bookingId: string,
+  cancelToken: string,
+  input: { startAt: string; endAt: string; roomId?: RoomId },
+) {
+  const { booking } = await request<{ booking: Booking }>(BOOKINGS_BASE, {
+    method: 'POST',
+    body: JSON.stringify({ action: 'update', bookingId, cancelToken, ...input }),
   })
   return booking
 }

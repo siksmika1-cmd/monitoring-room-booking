@@ -314,6 +314,55 @@ export async function notionCancelBooking(pageId: string) {
   })
 }
 
+export async function notionRestoreBooking(pageId: string) {
+  const notion = getClient()
+  const PROPS = await resolveProps()
+  await notion.pages.update({
+    page_id: pageId,
+    properties: {
+      [PROPS.status]: { select: { name: cachedStatusConfirmed } },
+    },
+  })
+}
+
+export async function notionUpdateBookingSchedule(
+  pageId: string,
+  input: { startAt: string; endAt: string; roomId?: RoomId },
+) {
+  const notion = getClient()
+  const PROPS = await resolveProps()
+
+  if (input.roomId) {
+    await notion.pages.update({
+      page_id: pageId,
+      properties: {
+        [PROPS.date]: {
+          date: {
+            start: notionDateTime(input.startAt),
+            end: notionDateTime(input.endAt),
+            time_zone: KST,
+          },
+        },
+        [PROPS.room]: { select: { name: ROOM_MAP[input.roomId].name } },
+      },
+    })
+    return
+  }
+
+  await notion.pages.update({
+    page_id: pageId,
+    properties: {
+      [PROPS.date]: {
+        date: {
+          start: notionDateTime(input.startAt),
+          end: notionDateTime(input.endAt),
+          time_zone: KST,
+        },
+      },
+    },
+  })
+}
+
 export async function notionFindByBookingId(bookingId: string): Promise<Booking | null> {
   const notion = getClient()
   const databaseId = await resolveDatabaseId()

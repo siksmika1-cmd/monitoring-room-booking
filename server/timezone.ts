@@ -63,3 +63,8 @@ export function kstDateIso(iso: string): string {
   const d = String(kst.getUTCDate()).padStart(2, '0')
   return `${y}-${mo}-${d}`
 }
+
+/** KST 기준 오늘 날짜(YYYY-MM-DD) */
+export function kstTodayIso(): string {
+  return kstDateIso(new Date().toISOString())
+}

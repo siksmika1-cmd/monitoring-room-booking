@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { RefreshCw } from 'lucide-react'
 import { BookingForm } from '@/components/BookingForm'
 import { MonthCalendar } from '@/components/MonthCalendar'
 import { RoomCard } from '@/components/RoomCard'
@@ -18,23 +19,43 @@ function scheduleRevision(settings: AppSettings): string {
   return settings.updatedAt ?? JSON.stringify(settings.weekdaySchedules)
 }
 
+function mergeSlots(availabilityByRoom: Partial<Record<RoomId, TimeSlot[]>>): TimeSlot[] {
+  const byStart = new Map<string, TimeSlot>()
+
+  for (const slots of Object.values(availabilityByRoom)) {
+    for (const slot of slots ?? []) {
+      const existing = byStart.get(slot.startAt)
+      if (!existing) {
+        byStart.set(slot.startAt, { ...slot })
+      } else if (slot.available) {
+        byStart.set(slot.startAt, { ...existing, available: true, bookingId: undefined })
+      }
+    }
+  }
+
+  return [...byStart.values()].sort((a, b) => a.startAt.localeCompare(b.startAt))
+}
+
 export function BookingPage({ onBooked }: BookingPageProps) {
   const embed = useEmbed()
   const [date, setDate] = useState(todayIso())
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [allRooms, setAllRooms] = useState<Room[]>([])
   const [roomId, setRoomId] = useState<RoomId | null>(null)
+  const [availabilityByRoom, setAvailabilityByRoom] = useState<Partial<Record<RoomId, TimeSlot[]>>>({})
   const [slots, setSlots] = useState<TimeSlot[]>([])
   const [loading, setLoading] = useState(false)
   const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null)
   const [error, setError] = useState('')
   const [settingsLoading, setSettingsLoading] = useState(true)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const [refreshing, setRefreshing] = useState(false)
 
   const revision = settings ? scheduleRevision(settings) : undefined
 
   const loadSettings = useCallback(() => {
     setSettingsLoading(true)
-    fetchSettings()
+    return fetchSettings()
       .then(({ settings: s, rooms: r }) => {
         setSettings(s)
         setAllRooms(r)
@@ -44,11 +65,29 @@ export function BookingPage({ onBooked }: BookingPageProps) {
       .finally(() => setSettingsLoading(false))
   }, [])
 
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true)
+    setSelectedSlot(null)
+    setRoomId(null)
+    setRefreshKey((k) => k + 1)
+    await loadSettings()
+    setRefreshing(false)
+  }, [loadSettings])
+
   const enabledRooms = useMemo(
     () => (settings ? roomsForDate(settings, allRooms, date) : []).filter((r) => r.enabled),
     [settings, allRooms, date],
   )
-  const room = enabledRooms.find((r) => r.id === roomId) ?? enabledRooms[0]
+  const roomsForSelectedSlot = useMemo(() => {
+    if (!selectedSlot) return []
+    return enabledRooms.filter((room) => {
+      const roomSlots = availabilityByRoom[room.id] ?? []
+      const slot = roomSlots.find((s) => s.startAt === selectedSlot.startAt)
+      return slot?.available
+    })
+  }, [selectedSlot, enabledRooms, availabilityByRoom])
+  const room = roomId ? roomsForSelectedSlot.find((r) => r.id === roomId) : undefined
+  const roomSlots = room ? (availabilityByRoom[room.id] ?? []) : []
   const daySchedule = settings ? getDaySchedule(settings, date) : null
 
   useEffect(() => {
@@ -65,22 +104,28 @@ export function BookingPage({ onBooked }: BookingPageProps) {
 
   useEffect(() => {
     if (enabledRooms.length === 0) {
-      setRoomId(null)
+      setAvailabilityByRoom({})
+      setSlots([])
       return
     }
-    if (!roomId || !enabledRooms.some((r) => r.id === roomId)) {
-      setRoomId(enabledRooms[0].id)
-    }
-  }, [enabledRooms, roomId])
 
-  useEffect(() => {
-    if (!roomId || !revision) return
     let cancelled = false
     setLoading(true)
     setError('')
-    fetchAvailability(date, roomId)
-      .then((data) => {
-        if (!cancelled) setSlots(data)
+
+    Promise.all(
+      enabledRooms.map((roomOption) =>
+        fetchAvailability(date, roomOption.id).then((roomAvailability) => [
+          roomOption.id,
+          roomAvailability,
+        ] as const),
+      ),
+    )
+      .then((entries) => {
+        if (cancelled) return
+        const byRoom = Object.fromEntries(entries) as Partial<Record<RoomId, TimeSlot[]>>
+        setAvailabilityByRoom(byRoom)
+        setSlots(mergeSlots(byRoom))
       })
       .catch((e) => {
         if (!cancelled) setError(e instanceof Error ? e.message : '불러오기 실패')
@@ -88,10 +133,21 @@ export function BookingPage({ onBooked }: BookingPageProps) {
       .finally(() => {
         if (!cancelled) setLoading(false)
       })
+
     return () => {
       cancelled = true
     }
-  }, [date, roomId, revision])
+  }, [date, enabledRooms, revision, refreshKey])
+
+  useEffect(() => {
+    if (!selectedSlot) {
+      setRoomId(null)
+      return
+    }
+    if (roomId && !roomsForSelectedSlot.some((r) => r.id === roomId)) {
+      setRoomId(null)
+    }
+  }, [selectedSlot, roomsForSelectedSlot, roomId])
 
   if (settingsLoading || !settings || !daySchedule) {
     return (
@@ -117,51 +173,44 @@ export function BookingPage({ onBooked }: BookingPageProps) {
   return (
     <div className={embed ? 'app-container px-2 py-3' : 'app-container py-4'}>
       <header className={embed ? 'mb-3' : 'mb-4'}>
-        {!embed && (
-          <h1 className="text-base font-bold leading-snug text-ku-crimson">{BOOKING_PAGE_TITLE}</h1>
-        )}
-        <p className={`text-slate-500 ${embed ? 'text-[11px]' : 'mt-0.5 text-xs'}`}>
-          외부 방문객 전용 · {formatKoreanDate(date)} 예약 가능 {formatHoursRange(settings, date)}
-        </p>
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            {!embed && (
+              <h1 className="text-base font-bold leading-snug text-ku-crimson">{BOOKING_PAGE_TITLE}</h1>
+            )}
+            <p className={`text-slate-500 ${embed ? 'text-[11px]' : 'mt-0.5 text-xs'}`}>
+              외부 방문객 전용 · {formatKoreanDate(date)} 예약 가능 {formatHoursRange(settings, date)}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="shrink-0 rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 disabled:opacity-50"
+            aria-label="새로고침"
+            title="새로고침"
+          >
+            <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+          </button>
+        </div>
       </header>
 
       <div className="mb-4">
         <MonthCalendar
           selected={date}
           scheduleRevision={revision}
+          refreshKey={refreshKey}
           onSelect={(d) => {
             setDate(d)
             setSelectedSlot(null)
+            setRoomId(null)
           }}
         />
       </div>
 
-      <section className="mb-4">
-        <h2 className="mb-2 text-xs font-semibold text-slate-700">좌석 선택</h2>
-        {enabledRooms.length === 0 ? (
-          <p className="text-xs text-slate-500">이 날짜에 예약 가능한 좌석이 없습니다.</p>
-        ) : (
-          <div className="grid grid-cols-3 gap-2">
-            {enabledRooms.map((r) => (
-              <RoomCard
-                key={r.id}
-                room={r}
-                selected={roomId === r.id}
-                onSelect={() => {
-                  setRoomId(r.id)
-                  setSelectedSlot(null)
-                }}
-              />
-            ))}
-          </div>
-        )}
-      </section>
-
-      {room && (
-        <section className="rounded-xl border border-slate-200 bg-white p-3">
-          <h2 className="mb-2 text-xs font-semibold text-slate-700">
-            {room.name} · 예약 현황
-          </h2>
+      {enabledRooms.length > 0 && (
+        <section className="mb-4 rounded-xl border border-slate-200 bg-white p-3">
+          <h2 className="mb-2 text-xs font-semibold text-slate-700">시간 선택</h2>
           {error ? (
             <p className="py-6 text-center text-sm text-red-500">{error}</p>
           ) : (
@@ -169,18 +218,41 @@ export function BookingPage({ onBooked }: BookingPageProps) {
               slots={slots}
               loading={loading}
               selectedStart={selectedSlot?.startAt}
-              onSelect={setSelectedSlot}
+              onSelect={(slot) => {
+                setSelectedSlot(slot)
+                setRoomId(null)
+              }}
             />
+          )}
+        </section>
+      )}
+
+      {selectedSlot && (
+        <section className="mb-4">
+          <h2 className="mb-2 text-xs font-semibold text-slate-700">좌석 선택</h2>
+          {roomsForSelectedSlot.length === 0 ? (
+            <p className="text-xs text-slate-500">선택한 시간에 예약 가능한 좌석이 없습니다.</p>
+          ) : (
+            <div className="grid grid-cols-3 gap-2">
+              {roomsForSelectedSlot.map((r) => (
+                <RoomCard
+                  key={r.id}
+                  room={r}
+                  selected={roomId === r.id}
+                  onSelect={() => setRoomId(r.id)}
+                />
+              ))}
+            </div>
           )}
         </section>
       )}
 
       {selectedSlot && room && (
         <BookingForm
-          key={selectedSlot.startAt}
+          key={`${room.id}-${selectedSlot.startAt}`}
           room={room}
           date={date}
-          slots={slots}
+          slots={roomSlots}
           settings={settings}
           initialSlot={selectedSlot}
           onClose={() => setSelectedSlot(null)}

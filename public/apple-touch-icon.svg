@@ -1,21 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" fill="none" role="img" aria-label="??">
-  <rect width="180" height="180" rx="40" fill="#ffffff"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" fill="none" role="img" aria-label="달력">
   <rect x="28" y="44" width="124" height="108" rx="20" fill="#ffffff" stroke="#e2e8f0" stroke-width="3"/>
   <path fill="#8B0029" d="M28 56a20 20 0 0 1 20-20h84a20 20 0 0 1 20 20v24H28V56z"/>
   <rect x="52" y="30" width="14" height="32" rx="7" fill="#94a3b8"/>
   <rect x="114" y="30" width="14" height="32" rx="7" fill="#94a3b8"/>
   <g fill="#cbd5e1">
-    <circle cx="50" cy="96" r="6"/>
-    <circle cx="74" cy="96" r="6"/>
-    <circle cx="98" cy="96" r="6"/>
-    <circle cx="122" cy="96" r="6"/>
-    <circle cx="50" cy="118" r="6"/>
-    <circle cx="74" cy="118" r="6"/>
-    <circle cx="122" cy="118" r="6"/>
-    <circle cx="50" cy="140" r="6"/>
-    <circle cx="74" cy="140" r="6"/>
-    <circle cx="98" cy="140" r="6"/>
+    <circle cx="50" cy="96" r="4"/>
+    <circle cx="74" cy="96" r="4"/>
+    <circle cx="98" cy="96" r="4"/>
+    <circle cx="122" cy="96" r="4"/>
+    <circle cx="50" cy="118" r="4"/>
+    <circle cx="74" cy="118" r="4"/>
+    <circle cx="122" cy="118" r="4"/>
+    <circle cx="50" cy="140" r="4"/>
+    <circle cx="74" cy="140" r="4"/>
+    <circle cx="98" cy="140" r="4"/>
   </g>
-  <circle cx="98" cy="118" r="15" fill="#8B0029"/>
-  <circle cx="122" cy="140" r="6" fill="#8B0029" opacity="0.35"/>
+  <circle cx="98" cy="118" r="9" fill="#8B0029"/>
+  <circle cx="122" cy="140" r="4" fill="#8B0029" opacity="0.35"/>
 </svg>

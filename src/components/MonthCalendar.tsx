@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   addMonths,
   format,
@@ -17,18 +17,27 @@ import { closedDayLabel, isClosedDay, isUnscheduledMonitoringDay } from '@/lib/c
 import type { DaySeatSummary } from '@/lib/types'
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토']
+const SWIPE_THRESHOLD = 48
 
 interface MonthCalendarProps {
   selected: string
   onSelect: (dateIso: string) => void
   /** 설정 변경 시 달력 잔여 좌석을 다시 불러옵니다 */
   scheduleRevision?: string
+  /** 수동 새로고침 시 달력 데이터를 다시 불러옵니다 */
+  refreshKey?: number
 }
 
-export function MonthCalendar({ selected, onSelect, scheduleRevision }: MonthCalendarProps) {
+export function MonthCalendar({
+  selected,
+  onSelect,
+  scheduleRevision,
+  refreshKey,
+}: MonthCalendarProps) {
   const [viewMonth, setViewMonth] = useState(() => startOfMonth(parseISO(selected)))
   const [days, setDays] = useState<Record<string, DaySeatSummary>>({})
   const [loading, setLoading] = useState(true)
+  const touchStart = useRef<{ x: number; y: number } | null>(null)
 
   const year = viewMonth.getFullYear()
   const month = viewMonth.getMonth() + 1
@@ -51,7 +60,7 @@ export function MonthCalendar({ selected, onSelect, scheduleRevision }: MonthCal
     return () => {
       cancelled = true
     }
-  }, [year, month, scheduleRevision])
+  }, [year, month, scheduleRevision, refreshKey])
 
   const cells = useMemo(() => {
     const first = startOfMonth(viewMonth)
@@ -70,14 +79,36 @@ export function MonthCalendar({ selected, onSelect, scheduleRevision }: MonthCal
 
   const isMinMonth = viewMonth.getTime() <= minMonth.getTime()
 
+  const goPrevMonth = () => {
+    if (!isMinMonth) setViewMonth((m) => subMonths(m, 1))
+  }
+
+  const goNextMonth = () => {
+    setViewMonth((m) => addMonths(m, 1))
+  }
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+  }
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (!touchStart.current) return
+    const dx = e.changedTouches[0].clientX - touchStart.current.x
+    const dy = e.changedTouches[0].clientY - touchStart.current.y
+    touchStart.current = null
+    if (Math.abs(dx) < SWIPE_THRESHOLD || Math.abs(dx) < Math.abs(dy)) return
+    if (dx > 0) goPrevMonth()
+    else goNextMonth()
+  }
+
   return (
     <section className="w-full rounded-xl border border-slate-200 bg-white p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <h2 className="text-xs font-semibold text-slate-700">예약 일자</h2>
+        <h2 className="text-xs font-semibold text-slate-700">날짜 선택</h2>
         <div className="flex items-center gap-1">
           <button
             type="button"
-            onClick={() => setViewMonth((m) => subMonths(m, 1))}
+            onClick={goPrevMonth}
             disabled={isMinMonth}
             className="rounded-lg border border-slate-200 p-1.5 hover:bg-slate-50 disabled:opacity-30"
             aria-label="이전 달"
@@ -89,7 +120,7 @@ export function MonthCalendar({ selected, onSelect, scheduleRevision }: MonthCal
           </span>
           <button
             type="button"
-            onClick={() => setViewMonth((m) => addMonths(m, 1))}
+            onClick={goNextMonth}
             className="rounded-lg border border-slate-200 p-1.5 hover:bg-slate-50"
             aria-label="다음 달"
           >
@@ -117,7 +148,11 @@ export function MonthCalendar({ selected, onSelect, scheduleRevision }: MonthCal
           달력 불러오는 중...
         </div>
       ) : (
-        <div className="grid grid-cols-7 gap-1">
+        <div
+          className="grid grid-cols-7 gap-1 touch-pan-y"
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
           {cells.map((day, idx) => {
             if (!day) return <div key={`empty-${idx}`} className="min-h-[2.75rem]" />
 
@@ -205,6 +240,7 @@ export function MonthCalendar({ selected, onSelect, scheduleRevision }: MonthCal
           <span>마감</span>
         </span>
         <span className="text-slate-400">주말·공휴일 휴무</span>
+        <span className="text-slate-400">← 스와이프로 달 이동 →</span>
       </div>
     </section>
   )

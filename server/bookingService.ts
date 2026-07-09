@@ -7,6 +7,8 @@ import {
   notionFindByBookingId,
   notionFindByEmail,
   notionQueryBookings,
+  notionRestoreBooking,
+  notionUpdateBookingSchedule,
   notionUpdateGoogleEventId,
 } from './notion.js'
 import { googleCreateEvent, googleDeleteEvent } from './googleCalendar.js'
@@ -18,11 +20,13 @@ import {
   memoryFindByBookingId,
   memoryFindByEmail,
   memoryQueryBookings,
+  memoryRestoreBooking,
+  memoryUpdateBooking,
 } from './memoryStore.js'
 import { ROOM_MAP } from './rooms.js'
 import { isRoomEnabledForDate, getScheduleForDate } from './schedule.js'
 import { isRangeCoveredByBlocks } from './timeBlocks.js'
-import { kstDayEnd, kstDayStart, kstDateIso, kstTimeLabel } from './timezone.js'
+import { kstDateIso, kstDayEnd, kstDayStart, kstTimeLabel, kstTodayIso } from './timezone.js'
 import type { Booking, CreateBookingInput, DaySeatSummary, RoomId } from './types.js'
 
 function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
@@ -229,6 +233,172 @@ export async function cancelBooking(bookingId: string, cancelToken: string) {
   return { ...booking, status: 'cancelled' as const }
 }
 
+export interface UpdateBookingScheduleInput {
+  startAt: string
+  endAt: string
+  roomId?: RoomId
+}
+
+async function loadAuthenticatedBooking(bookingId: string, cancelToken: string): Promise<Booking> {
+  const booking = isMemoryStoreEnabled()
+    ? memoryFindByBookingId(bookingId)
+    : await notionFindByBookingId(bookingId)
+
+  if (!booking) throw new Error('예약을 찾을 수 없습니다')
+  if (!cancelToken || booking.cancelToken !== cancelToken) throw new Error('권한이 없습니다')
+  return booking
+}
+
+function assertScheduleAvailable(
+  startAt: string,
+  endAt: string,
+  roomId: RoomId,
+  excludeBookingId?: string,
+) {
+  const dateIso = kstDateIso(startAt)
+  return getBookingsForDate(dateIso).then((existing) => {
+    const others = excludeBookingId
+      ? existing.filter((b) => b.id !== excludeBookingId)
+      : existing
+    if (!isTimeRangeAvailable(startAt, endAt, others, roomId)) {
+      throw new Error('이미 예약된 시간입니다. 다른 시간을 선택해 주세요.')
+    }
+  })
+}
+
+export async function restoreBooking(bookingId: string, cancelToken: string) {
+  const booking = await loadAuthenticatedBooking(bookingId, cancelToken)
+  if (booking.status !== 'cancelled') throw new Error('취소된 예약만 복구할 수 있습니다')
+
+  const dateIso = kstDateIso(booking.startAt)
+  if (isClosedDay(dateIso)) {
+    throw new Error('주말 및 공휴일은 모니터링을 실시하지 않아 복구할 수 없습니다')
+  }
+  if (isUnscheduledDay(dateIso)) {
+    throw new Error('해당 요일은 예약을 받지 않습니다')
+  }
+  if (!isRoomEnabledForDate(booking.roomId, dateIso)) {
+    throw new Error('현재 예약할 수 없는 룸입니다')
+  }
+
+  await assertScheduleAvailable(booking.startAt, booking.endAt, booking.roomId)
+
+  if (isMemoryStoreEnabled()) {
+    memoryRestoreBooking(booking.notionPageId)
+  } else {
+    await notionRestoreBooking(booking.notionPageId)
+  }
+
+  let googleEventId = booking.googleEventId
+  try {
+    googleEventId = await googleCreateEvent(
+      {
+        roomId: booking.roomId,
+        startAt: booking.startAt,
+        endAt: booking.endAt,
+        visitorName: booking.visitorName,
+        visitorEmail: booking.visitorEmail,
+        visitorPhone: booking.visitorPhone,
+        protocolNo: booking.protocolNo,
+        irbNo: booking.irbNo,
+        company: booking.company,
+        purpose: booking.purpose,
+      },
+      booking.id,
+    )
+    if (googleEventId && !isMemoryStoreEnabled()) {
+      await notionUpdateGoogleEventId(booking.notionPageId, googleEventId)
+    }
+  } catch {
+    /* 캘린더 복구 실패해도 예약은 복구 */
+  }
+
+  return { ...booking, status: 'confirmed' as const, googleEventId }
+}
+
+export async function updateBookingSchedule(
+  bookingId: string,
+  cancelToken: string,
+  input: UpdateBookingScheduleInput,
+) {
+  const booking = await loadAuthenticatedBooking(bookingId, cancelToken)
+  if (booking.status !== 'confirmed') throw new Error('확정된 예약만 수정할 수 있습니다')
+
+  const roomId = input.roomId ?? booking.roomId
+  validateInput({
+    roomId,
+    startAt: input.startAt,
+    endAt: input.endAt,
+    visitorName: booking.visitorName,
+    visitorEmail: booking.visitorEmail,
+    visitorPhone: booking.visitorPhone,
+    protocolNo: booking.protocolNo,
+    irbNo: booking.irbNo,
+    company: booking.company,
+    purpose: booking.purpose,
+  })
+
+  await assertScheduleAvailable(input.startAt, input.endAt, roomId, booking.id)
+
+  const room = ROOM_MAP[roomId]
+
+  if (isMemoryStoreEnabled()) {
+    memoryUpdateBooking(booking.notionPageId, {
+      startAt: input.startAt,
+      endAt: input.endAt,
+      roomId,
+      roomName: room.name,
+    })
+  } else {
+    await notionUpdateBookingSchedule(booking.notionPageId, {
+      startAt: input.startAt,
+      endAt: input.endAt,
+      roomId,
+    })
+  }
+
+  if (booking.googleEventId) {
+    try {
+      await googleDeleteEvent(booking.googleEventId)
+    } catch {
+      /* ignore */
+    }
+  }
+
+  let googleEventId: string | undefined
+  try {
+    googleEventId = await googleCreateEvent(
+      {
+        roomId,
+        startAt: input.startAt,
+        endAt: input.endAt,
+        visitorName: booking.visitorName,
+        visitorEmail: booking.visitorEmail,
+        visitorPhone: booking.visitorPhone,
+        protocolNo: booking.protocolNo,
+        irbNo: booking.irbNo,
+        company: booking.company,
+        purpose: booking.purpose,
+      },
+      booking.id,
+    )
+    if (googleEventId && !isMemoryStoreEnabled()) {
+      await notionUpdateGoogleEventId(booking.notionPageId, googleEventId)
+    }
+  } catch {
+    /* ignore */
+  }
+
+  return {
+    ...booking,
+    roomId,
+    roomName: room.name,
+    startAt: input.startAt,
+    endAt: input.endAt,
+    googleEventId,
+  }
+}
+
 export interface LookupBookingInput {
   bookingId?: string
   visitorName?: string
@@ -277,7 +447,7 @@ async function findLookupCandidates(input: LookupBookingInput): Promise<Booking[
   return []
 }
 
-export async function lookupBooking(input: LookupBookingInput) {
+export async function lookupBooking(input: LookupBookingInput): Promise<Booking[]> {
   if (countLookupFields(input) < 2) {
     throw new Error('예약 번호, 예약자 이름, 이메일 중 2가지 이상 입력해 주세요')
   }
@@ -288,9 +458,13 @@ export async function lookupBooking(input: LookupBookingInput) {
   if (matched.length === 0) {
     throw new Error('예약을 찾을 수 없습니다. 입력 정보를 확인해 주세요')
   }
-  if (matched.length > 1) {
-    throw new Error('조건에 맞는 예약이 여러 건입니다. 예약 번호를 함께 입력해 주세요')
+
+  const today = kstTodayIso()
+  const upcoming = matched.filter((booking) => kstDateIso(booking.startAt) >= today)
+
+  if (upcoming.length === 0) {
+    throw new Error('조회 가능한 예약이 없습니다. 오늘 이후 예약만 조회됩니다')
   }
 
-  return matched[0]
+  return upcoming.sort((a, b) => a.startAt.localeCompare(b.startAt))
 }

@@ -41,6 +41,27 @@ export function memoryCancelBooking(pageId: string) {
   }
 }
 
+export function memoryRestoreBooking(pageId: string) {
+  for (const [id, booking] of bookings) {
+    if (booking.notionPageId === pageId) {
+      bookings.set(id, { ...booking, status: 'confirmed' })
+      return
+    }
+  }
+}
+
+export function memoryUpdateBooking(
+  pageId: string,
+  updates: Partial<Pick<Booking, 'startAt' | 'endAt' | 'roomId' | 'roomName'>>,
+) {
+  for (const [id, booking] of bookings) {
+    if (booking.notionPageId === pageId) {
+      bookings.set(id, { ...booking, ...updates })
+      return
+    }
+  }
+}
+
 export function memoryCreateBookingFromInput(
   bookingId: string,
   cancelToken: string,
