@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-label="달력">
+  <rect x="10" y="16" width="44" height="38" rx="7" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.5"/>
   <path fill="#8B0029" d="M10 20a7 7 0 0 1 7-7h30a7 7 0 0 1 7 7v8H10v-8z"/>
   <rect x="19" y="11" width="5" height="11" rx="2.5" fill="#94a3b8"/>
   <rect x="40" y="11" width="5" height="11" rx="2.5" fill="#94a3b8"/>
