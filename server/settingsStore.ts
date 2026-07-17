@@ -8,6 +8,8 @@ import {
   migrateLegacySettings,
   normalizeTimeBlocks,
 } from './timeBlocks.js'
+import { loadSettingsFromNotion, saveSettingsToNotion } from './settingsNotion.js'
+import { normalizeBlockedDates } from './blockedDates.js'
 import { WEEKDAY_KEYS } from './weekday.js'
 import type { AppSettings, DaySchedule, RoomId, WeekdayKey } from './types.js'
 
@@ -28,13 +30,15 @@ const DEFAULT_DAY_BLOCKS = generateCandidateBlocks(60).filter((b) => {
 })
 
 const DEFAULT_BASE_SCHEDULE: DaySchedule = {
-  timeBlocks: DEFAULT_DAY_BLOCKS,
-  enabledRoomIds: ROOMS.map((r) => r.id),
+  timeBlocks: DEFAULT_DAY_BLOCKS.map((block) => ({
+    ...block,
+    enabledRoomIds: ROOMS.map((r) => r.id),
+  })),
 }
 
 function buildDefaultWeekdaySchedules(): Record<WeekdayKey, DaySchedule> {
   const weekday = cloneSchedule(DEFAULT_BASE_SCHEDULE)
-  const weekend = { timeBlocks: [], enabledRoomIds: [] as RoomId[] }
+  const weekend: DaySchedule = { timeBlocks: [] }
   return {
     mon: cloneSchedule(weekday),
     tue: cloneSchedule(weekday),
@@ -49,6 +53,7 @@ function buildDefaultWeekdaySchedules(): Record<WeekdayKey, DaySchedule> {
 export const DEFAULT_SETTINGS: AppSettings = {
   slotMinutes: 60,
   weekdaySchedules: buildDefaultWeekdaySchedules(),
+  blockedDates: [],
 }
 
 function getFileMtime(): number {
@@ -74,15 +79,15 @@ function migrateWeekdaySchedules(raw: Partial<AppSettings>, slotMinutes: number)
 
   const timeBlocks = normalizeTimeBlocks(migrateLegacySettings({ ...raw, slotMinutes }))
   const validRoomIds = new Set(ROOMS.map((r) => r.id))
-  const enabledRoomIds = (raw.enabledRoomIds ?? DEFAULT_BASE_SCHEDULE.enabledRoomIds).filter(
+  const enabledRoomIds = (raw.enabledRoomIds ?? ROOMS.map((r) => r.id)).filter(
     (id): id is RoomId => validRoomIds.has(id as RoomId),
   )
-  const base = normalizeDaySchedule({ timeBlocks, enabledRoomIds }, DEFAULT_BASE_SCHEDULE.enabledRoomIds)
+  const base = normalizeDaySchedule({ timeBlocks, enabledRoomIds }, DEFAULT_BASE_SCHEDULE.timeBlocks.flatMap((b) => b.enabledRoomIds))
   const schedules = buildDefaultWeekdaySchedules()
 
   for (const key of WEEKDAY_KEYS) {
     if (key === 'sat' || key === 'sun') {
-      schedules[key] = { timeBlocks: [], enabledRoomIds: [] }
+      schedules[key] = { timeBlocks: [] }
     } else {
       schedules[key] = cloneSchedule(base)
     }
@@ -100,6 +105,7 @@ function normalizeSettings(raw: Partial<AppSettings>): AppSettings {
   return {
     slotMinutes,
     weekdaySchedules,
+    blockedDates: normalizeBlockedDates(raw.blockedDates ?? DEFAULT_SETTINGS.blockedDates),
     updatedAt: raw.updatedAt,
   }
 }
@@ -108,6 +114,7 @@ function toPersistedSettings(settings: AppSettings): AppSettings {
   return {
     slotMinutes: settings.slotMinutes,
     weekdaySchedules: settings.weekdaySchedules,
+    blockedDates: normalizeBlockedDates(settings.blockedDates),
     updatedAt: settings.updatedAt,
   }
 }
@@ -132,6 +139,7 @@ function readFromFile(): AppSettings {
   return {
     slotMinutes: DEFAULT_SETTINGS.slotMinutes,
     weekdaySchedules: buildDefaultWeekdaySchedules(),
+    blockedDates: [],
   }
 }
 
@@ -147,10 +155,26 @@ function persistSettings(settings: AppSettings): AppSettings {
   return settings
 }
 
+function shouldUseNotion(): boolean {
+  return !!process.env.VERCEL && !!process.env.NOTION_API_TOKEN
+}
+
+async function loadFromNotionIntoCache(): Promise<void> {
+  const raw = await loadSettingsFromNotion()
+  if (!raw) return
+  const settings = normalizeSettings(raw)
+  setGlobalCache({ settings, fileMtime: Date.now() })
+}
+
+export async function ensureSettingsLoaded(): Promise<void> {
+  if (!shouldUseNotion()) return
+  await loadFromNotionIntoCache()
+}
+
 export function getSettings(): AppSettings {
   const fileMtime = getFileMtime()
   const cached = getGlobalCache()
-  if (cached && cached.fileMtime === fileMtime) {
+  if (cached && (shouldUseNotion() || cached.fileMtime === fileMtime)) {
     return cached.settings
   }
 
@@ -159,24 +183,23 @@ export function getSettings(): AppSettings {
   return settings
 }
 
-export function updateSettings(next: Partial<AppSettings>): AppSettings {
+export async function updateSettings(next: Partial<AppSettings>): Promise<AppSettings> {
   const current = getSettings()
   const settings = normalizeSettings({
     slotMinutes: next.slotMinutes ?? current.slotMinutes,
     weekdaySchedules: next.weekdaySchedules ?? current.weekdaySchedules,
+    blockedDates: next.blockedDates ?? current.blockedDates,
     updatedAt: new Date().toISOString(),
   })
 
-  try {
-    return persistSettings(settings)
-  } catch (e) {
-    const message = e instanceof Error ? e.message : '설정 파일 저장 실패'
-    if (process.env.NODE_ENV !== 'production') {
-      throw new Error(message)
-    }
-    setGlobalCache({ settings, fileMtime: Date.now() })
+  setGlobalCache({ settings, fileMtime: Date.now() })
+
+  if (shouldUseNotion()) {
+    await saveSettingsToNotion(settings)
     return settings
   }
+
+  return persistSettings(settings)
 }
 
 export function verifyAdminPassword(password: string): boolean {

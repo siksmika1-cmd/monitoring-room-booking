@@ -5,6 +5,7 @@ const SETTINGS_BASE = '/api/settings'
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
+    cache: 'no-store',
     ...init,
     headers: { 'Content-Type': 'application/json', ...init?.headers },
   })

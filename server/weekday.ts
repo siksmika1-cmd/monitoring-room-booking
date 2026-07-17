@@ -33,5 +33,5 @@ export function formatWeekdayLabel(dateIso: string): string {
 }
 
 export function emptySchedule(): DaySchedule {
-  return { timeBlocks: [], enabledRoomIds: [] }
+  return { timeBlocks: [] }
 }

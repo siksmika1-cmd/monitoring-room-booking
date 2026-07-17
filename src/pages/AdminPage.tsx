@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Loader2, Save, Settings } from 'lucide-react'
+import { Loader2, Save, Settings, Trash2 } from 'lucide-react'
 import { TimeBlockPicker } from '@/components/TimeBlockPicker'
 import { fetchSettings, loginAdmin, updateSettings } from '@/lib/api'
 import { APP_TITLE } from '@/lib/constants'
 import { useEmbed } from '@/lib/embed'
-import { blockKey, generateCandidateBlocks } from '@/lib/timeBlocks'
 import { cloneSchedule } from '@/lib/scheduleHelpers'
+import { formatKoreanDate, todayIso } from '@/lib/format'
+import { blockKey, generateCandidateBlocks } from '@/lib/timeBlocks'
 import { WEEKDAY_KEYS, WEEKDAY_LABELS, isWeekendKey } from '@/lib/weekday'
-import type { AppSettings, DaySchedule, Room, RoomId, WeekdayKey } from '@/lib/types'
+import type { AppSettings, DaySchedule, Room, RoomId, TimeBlock, WeekdayKey } from '@/lib/types'
 
 const ADMIN_KEY = 'booking-admin-auth'
 const ADMIN_PASSWORD_KEY = 'booking-admin-password'
@@ -28,6 +29,14 @@ function clearAdminSession() {
 
 const WEEKDAY_TABS = WEEKDAY_KEYS.filter((k) => !isWeekendKey(k))
 
+function mergeTimeBlocks(prev: TimeBlock[], next: TimeBlock[]): TimeBlock[] {
+  const prevMap = new Map(prev.map((block) => [blockKey(block), block]))
+  return next.map((block) => {
+    const existing = prevMap.get(blockKey(block))
+    return existing ?? { ...block, enabledRoomIds: [] }
+  })
+}
+
 export function AdminPage() {
   const embed = useEmbed()
   const [password, setPassword] = useState(() => readStoredPassword())
@@ -41,14 +50,23 @@ export function AdminPage() {
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [rooms, setRooms] = useState<Room[]>([])
   const [activeWeekday, setActiveWeekday] = useState<WeekdayKey>('mon')
+  const [activeTimeKey, setActiveTimeKey] = useState<string | null>(null)
   const [saveError, setSaveError] = useState('')
   const [saveLoading, setSaveLoading] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [newBlockedDate, setNewBlockedDate] = useState('')
 
   const activeSchedule = useMemo(
     () => (settings ? settings.weekdaySchedules[activeWeekday] : null),
     [settings, activeWeekday],
   )
+
+  const activeBlock = useMemo(
+    () => activeSchedule?.timeBlocks.find((block) => blockKey(block) === activeTimeKey) ?? null,
+    [activeSchedule, activeTimeKey],
+  )
+
+  const blockedDates = settings?.blockedDates ?? []
 
   useEffect(() => {
     if (authed) {
@@ -60,6 +78,15 @@ export function AdminPage() {
         .catch((e) => setSaveError(e instanceof Error ? e.message : '불러오기 실패'))
     }
   }, [authed])
+
+  useEffect(() => {
+    if (!activeSchedule) return
+    if (activeTimeKey && activeSchedule.timeBlocks.some((block) => blockKey(block) === activeTimeKey)) {
+      return
+    }
+    const first = activeSchedule.timeBlocks[0]
+    setActiveTimeKey(first ? blockKey(first) : null)
+  }, [activeSchedule, activeTimeKey])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -91,12 +118,37 @@ export function AdminPage() {
     })
   }
 
-  const toggleRoom = (id: RoomId) => {
-    if (!activeSchedule) return
-    const enabled = new Set(activeSchedule.enabledRoomIds)
+  const toggleRoomForActiveBlock = (id: RoomId) => {
+    if (!activeBlock || !activeSchedule) return
+    const enabled = new Set(activeBlock.enabledRoomIds)
     if (enabled.has(id)) enabled.delete(id)
     else enabled.add(id)
-    updateActiveSchedule({ enabledRoomIds: [...enabled] as RoomId[] })
+    const nextBlocks = activeSchedule.timeBlocks.map((block) =>
+      blockKey(block) === activeTimeKey
+        ? { ...block, enabledRoomIds: [...enabled] as RoomId[] }
+        : block,
+    )
+    updateActiveSchedule({ timeBlocks: nextBlocks })
+  }
+
+  const addBlockedDate = () => {
+    if (!settings || !newBlockedDate) return
+    if (blockedDates.includes(newBlockedDate)) return
+    setSaved(false)
+    setSettings({
+      ...settings,
+      blockedDates: [...blockedDates, newBlockedDate].sort(),
+    })
+    setNewBlockedDate('')
+  }
+
+  const removeBlockedDate = (dateIso: string) => {
+    if (!settings) return
+    setSaved(false)
+    setSettings({
+      ...settings,
+      blockedDates: blockedDates.filter((date) => date !== dateIso),
+    })
   }
 
   const copyToOtherWeekdays = () => {
@@ -203,31 +255,37 @@ export function AdminPage() {
     <div className="mx-auto max-w-2xl px-4 py-6">
       <h1 className="mb-1 text-2xl font-bold text-slate-900">관리자 설정</h1>
       <p className="mb-6 text-sm text-slate-500">
-        요일별 예약 가능 시간과 좌석을 관리합니다. 시간·좌석을 모두 비워 두면 해당 요일은 예약을 받지 않습니다.
+        요일별로 예약 시간을 선택한 뒤, 각 시간마다 예약 가능 좌석을 개별 설정합니다.
       </p>
 
       <form onSubmit={handleSave} className="space-y-5">
-        <div className="flex flex-wrap gap-2">
-          {WEEKDAY_TABS.map((key) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setActiveWeekday(key)}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
-                activeWeekday === key
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              {WEEKDAY_LABELS[key]}요일
-            </button>
-          ))}
-        </div>
+        <section className="rounded-2xl border border-slate-200 bg-white p-4">
+          <h2 className="mb-3 text-sm font-semibold text-slate-700">1. 요일 선택</h2>
+          <div className="flex flex-wrap gap-2">
+            {WEEKDAY_TABS.map((key) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => {
+                  setActiveWeekday(key)
+                  setActiveTimeKey(null)
+                }}
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+                  activeWeekday === key
+                    ? 'bg-slate-900 text-white'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {WEEKDAY_LABELS[key]}요일
+              </button>
+            ))}
+          </div>
+        </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-4">
           <div className="mb-3 flex items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-slate-700">
-              {WEEKDAY_LABELS[activeWeekday]}요일 · 예약 가능 시간
+              2. {WEEKDAY_LABELS[activeWeekday]}요일 · 시간 선택
             </h2>
             <button
               type="button"
@@ -240,7 +298,11 @@ export function AdminPage() {
           <TimeBlockPicker
             slotMinutes={settings.slotMinutes}
             timeBlocks={activeSchedule.timeBlocks}
-            onChange={(timeBlocks) => updateActiveSchedule({ timeBlocks })}
+            onChange={(timeBlocks) =>
+              updateActiveSchedule({
+                timeBlocks: mergeTimeBlocks(activeSchedule.timeBlocks, timeBlocks),
+              })
+            }
             onSlotMinutesChange={(slotMinutes) => {
               setSaved(false)
               const candidates = generateCandidateBlocks(slotMinutes)
@@ -251,14 +313,11 @@ export function AdminPage() {
                 weekdaySchedules: Object.fromEntries(
                   WEEKDAY_KEYS.map((key) => {
                     const schedule = settings.weekdaySchedules[key]
-                    const filtered = schedule.timeBlocks.filter((b) => keys.has(blockKey(b)))
-                    return [
-                      key,
-                      {
-                        ...schedule,
-                        timeBlocks: filtered.length > 0 ? filtered : [],
-                      },
-                    ]
+                    const filtered = mergeTimeBlocks(
+                      schedule.timeBlocks,
+                      schedule.timeBlocks.filter((b) => keys.has(blockKey(b))),
+                    )
+                    return [key, { timeBlocks: filtered }]
                   }),
                 ) as AppSettings['weekdaySchedules'],
               })
@@ -266,29 +325,115 @@ export function AdminPage() {
           />
         </section>
 
+        {activeSchedule.timeBlocks.length > 0 && (
+          <section className="rounded-2xl border border-slate-200 bg-white p-4">
+            <h2 className="mb-3 text-sm font-semibold text-slate-700">
+              3. {WEEKDAY_LABELS[activeWeekday]}요일 · 좌석 선택
+            </h2>
+            <p className="mb-3 text-xs text-slate-500">좌석을 설정할 시간을 선택하세요.</p>
+            <div className="mb-4 flex flex-wrap gap-2">
+              {activeSchedule.timeBlocks.map((block) => {
+                const key = blockKey(block)
+                const selected = activeTimeKey === key
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setActiveTimeKey(key)}
+                    className={`rounded-lg border px-3 py-1.5 text-xs font-medium ${
+                      selected
+                        ? 'border-blue-600 bg-blue-600 text-white'
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:bg-blue-50'
+                    }`}
+                  >
+                    {block.start}–{block.end}
+                    <span className={`ml-1 ${selected ? 'text-blue-100' : 'text-slate-400'}`}>
+                      ({block.enabledRoomIds.length}석)
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+
+            {activeBlock ? (
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-slate-600">
+                  {activeBlock.start}–{activeBlock.end} 예약 가능 좌석
+                </p>
+                {rooms.map((room) => (
+                  <label
+                    key={room.id}
+                    className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-100 px-3 py-2 hover:bg-slate-50"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={activeBlock.enabledRoomIds.includes(room.id)}
+                      onChange={() => toggleRoomForActiveBlock(room.id)}
+                      className="h-4 w-4 rounded border-slate-300"
+                    />
+                    <div>
+                      <p className="text-sm font-medium text-slate-800">{room.name}</p>
+                      <p className="text-xs text-slate-500">{room.description}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-500">시간을 선택하면 좌석을 설정할 수 있습니다.</p>
+            )}
+          </section>
+        )}
+
         <section className="rounded-2xl border border-slate-200 bg-white p-4">
-          <h2 className="mb-3 text-sm font-semibold text-slate-700">
-            {WEEKDAY_LABELS[activeWeekday]}요일 · 예약 가능 좌석
-          </h2>
-          <div className="space-y-2">
-            {rooms.map((room) => (
-              <label
-                key={room.id}
-                className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-100 px-3 py-2 hover:bg-slate-50"
-              >
-                <input
-                  type="checkbox"
-                  checked={activeSchedule.enabledRoomIds.includes(room.id)}
-                  onChange={() => toggleRoom(room.id)}
-                  className="h-4 w-4 rounded border-slate-300"
-                />
-                <div>
-                  <p className="text-sm font-medium text-slate-800">{room.name}</p>
-                  <p className="text-xs text-slate-500">{room.description}</p>
-                </div>
-              </label>
-            ))}
+          <h2 className="mb-1 text-sm font-semibold text-slate-700">예약 불가 날짜</h2>
+          <p className="mb-3 text-xs text-slate-500">
+            지정한 날짜는 주말·공휴일과 같이 모니터링 예약을 받지 않습니다.
+          </p>
+          <div className="mb-3 flex flex-wrap gap-2">
+            <input
+              type="date"
+              value={newBlockedDate}
+              min={todayIso()}
+              onChange={(e) => {
+                setNewBlockedDate(e.target.value)
+                setSaved(false)
+              }}
+              className="input flex-1 min-w-[10rem]"
+            />
+            <button
+              type="button"
+              onClick={addBlockedDate}
+              disabled={!newBlockedDate}
+              className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+            >
+              추가
+            </button>
           </div>
+          {blockedDates.length === 0 ? (
+            <p className="text-xs text-slate-500">등록된 예약 불가 날짜가 없습니다.</p>
+          ) : (
+            <ul className="space-y-2">
+              {blockedDates.map((dateIso) => (
+                <li
+                  key={dateIso}
+                  className="flex items-center justify-between rounded-xl border border-slate-100 px-3 py-2"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-slate-800">{formatKoreanDate(dateIso)}</p>
+                    <p className="text-xs text-slate-500">{dateIso}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeBlockedDate(dateIso)}
+                    className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-500"
+                    aria-label={`${dateIso} 삭제`}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-4">

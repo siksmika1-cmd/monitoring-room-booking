@@ -24,7 +24,7 @@ import {
   memoryUpdateBooking,
 } from './memoryStore.js'
 import { ROOM_MAP } from './rooms.js'
-import { isRoomEnabledForDate, getScheduleForDate } from './schedule.js'
+import { isRoomEnabledForSlot, getScheduleForDate, getDayRoomIds } from './schedule.js'
 import { isRangeCoveredByBlocks } from './timeBlocks.js'
 import { kstDateIso, kstDayEnd, kstDayStart, kstTimeLabel, kstTodayIso } from './timezone.js'
 import type { Booking, CreateBookingInput, DaySeatSummary, RoomId } from './types.js'
@@ -34,8 +34,9 @@ function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
 }
 
 function isUnscheduledDay(dateIso: string): boolean {
-  const { timeBlocks, enabledRoomIds } = getScheduleForDate(dateIso)
-  return timeBlocks.length === 0 || enabledRoomIds.length === 0
+  const { timeBlocks } = getScheduleForDate(dateIso)
+  if (timeBlocks.length === 0) return true
+  return timeBlocks.every((block) => block.enabledRoomIds.length === 0)
 }
 
 function validateInput(input: CreateBookingInput) {
@@ -43,12 +44,18 @@ function validateInput(input: CreateBookingInput) {
 
   const dateIso = kstDateIso(input.startAt)
   if (isClosedDay(dateIso)) {
+    const label = closedDayLabel(dateIso)
+    if (label === '예약 불가') {
+      throw new Error('관리자가 지정한 날짜는 모니터링 예약을 받지 않습니다')
+    }
     throw new Error('주말 및 공휴일은 모니터링을 실시하지 않아 예약할 수 없습니다')
   }
   if (isUnscheduledDay(dateIso)) {
     throw new Error('해당 요일은 예약을 받지 않습니다')
   }
-  if (!isRoomEnabledForDate(input.roomId, dateIso)) throw new Error('현재 예약할 수 없는 룸입니다')
+  if (!isRoomEnabledForSlot(input.roomId, dateIso, kstTimeLabel(input.startAt))) {
+    throw new Error('현재 예약할 수 없는 룸입니다')
+  }
   if (!input.visitorName.trim()) throw new Error('이름을 입력해 주세요')
   if (!input.visitorEmail.trim()) throw new Error('이메일을 입력해 주세요')
   if (!input.visitorPhone.trim()) throw new Error('연락처를 입력해 주세요')
@@ -117,8 +124,8 @@ export async function getMonthSeatSummary(
     }
     let total = 0
     let occupied = 0
-    const { enabledRoomIds } = getScheduleForDate(dateIso)
-    for (const roomId of enabledRoomIds) {
+    const roomIds = getDayRoomIds(dateIso)
+    for (const roomId of roomIds) {
       const slots = buildAvailability(dateIso, roomId, bookings)
       total += slots.length
       occupied += slots.filter((s) => !s.available).length
@@ -129,7 +136,7 @@ export async function getMonthSeatSummary(
 }
 
 export async function getAvailability(dateIso: string, roomId: RoomId) {
-  if (isClosedDay(dateIso) || isUnscheduledDay(dateIso) || !isRoomEnabledForDate(roomId, dateIso)) return []
+  if (isClosedDay(dateIso) || isUnscheduledDay(dateIso) || !getDayRoomIds(dateIso).includes(roomId)) return []
   const bookings = await getBookingsForDate(dateIso)
   return buildAvailability(dateIso, roomId, bookings)
 }
@@ -277,7 +284,7 @@ export async function restoreBooking(bookingId: string, cancelToken: string) {
   if (isUnscheduledDay(dateIso)) {
     throw new Error('해당 요일은 예약을 받지 않습니다')
   }
-  if (!isRoomEnabledForDate(booking.roomId, dateIso)) {
+  if (!isRoomEnabledForSlot(booking.roomId, dateIso, kstTimeLabel(booking.startAt))) {
     throw new Error('현재 예약할 수 없는 룸입니다')
   }
 

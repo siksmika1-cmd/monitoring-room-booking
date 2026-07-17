@@ -1,5 +1,7 @@
 import Holidays from 'date-holidays'
 import { parseISO } from 'date-fns'
+import { isBlockedDate } from './blockedDates.js'
+import { getSettings } from './settingsStore.js'
 
 const krHolidays = new Holidays('KR')
 
@@ -9,7 +11,9 @@ function getCalendarDayOfWeek(dateIso: string): number {
   return new Date(Date.UTC(y, m - 1, d)).getUTCDay()
 }
 
-export function getClosedDayReason(dateIso: string): 'weekend' | 'holiday' | null {
+export function getClosedDayReason(dateIso: string): 'weekend' | 'holiday' | 'blocked' | null {
+  if (isBlockedDate(dateIso, getSettings().blockedDates)) return 'blocked'
+
   const dow = getCalendarDayOfWeek(dateIso)
   if (dow === 0 || dow === 6) return 'weekend'
   if (krHolidays.isHoliday(parseISO(`${dateIso}T12:00:00+09:00`))) return 'holiday'
@@ -22,6 +26,7 @@ export function isClosedDay(dateIso: string): boolean {
 
 export function closedDayLabel(dateIso: string): string {
   const reason = getClosedDayReason(dateIso)
+  if (reason === 'blocked') return '예약 불가'
   if (reason === 'weekend') return '주말'
   if (reason === 'holiday') {
     const info = krHolidays.isHoliday(parseISO(`${dateIso}T12:00:00+09:00`))

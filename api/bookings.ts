@@ -9,16 +9,20 @@ import {
   restoreBooking,
   updateBookingSchedule,
 } from '../server/bookingService.js'
+import { ensureSettingsLoaded } from '../server/settingsStore.js'
 import type { CreateBookingInput, RoomId } from '../server/types.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  res.setHeader('Cache-Control', 'no-store')
 
   if (req.method === 'OPTIONS') return res.status(204).end()
 
   try {
+    await ensureSettingsLoaded()
+
     if (req.method === 'GET') {
       const action = req.query.action as string | undefined
 

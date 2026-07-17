@@ -1,4 +1,4 @@
-import type { AppSettings, TimeBlock } from './types.js'
+import type { AppSettings, RoomId, TimeBlock } from './types.js'
 
 /** 관리자 UI 그리드 범위 */
 export const GRID_DAY_START = 9
@@ -19,7 +19,21 @@ export function normalizeTimeBlock(block: TimeBlock): TimeBlock {
   return {
     start: formatMinutes(parseTimeLabel(block.start)),
     end: formatMinutes(parseTimeLabel(block.end)),
+    enabledRoomIds: [...(block.enabledRoomIds ?? [])],
   }
+}
+
+export function unionRoomIds(blocks: TimeBlock[]): RoomId[] {
+  const ids = new Set<RoomId>()
+  for (const block of normalizeTimeBlocks(blocks)) {
+    for (const id of block.enabledRoomIds) ids.add(id)
+  }
+  return [...ids]
+}
+
+export function findBlockForStart(blocks: TimeBlock[], startTime: string): TimeBlock | undefined {
+  const target = formatMinutes(parseTimeLabel(startTime))
+  return normalizeTimeBlocks(blocks).find((b) => b.start === target)
 }
 
 export function blockKey(block: TimeBlock): string {
@@ -37,6 +51,7 @@ export function generateCandidateBlocks(slotMinutes: number): TimeBlock[] {
     blocks.push({
       start: formatMinutes(cursor),
       end: formatMinutes(cursor + step),
+      enabledRoomIds: [],
     })
   }
   return blocks
@@ -60,6 +75,7 @@ export function migrateLegacySettings(raw: Partial<AppSettings>): TimeBlock[] {
       blocks.push({
         start: formatMinutes(total),
         end: formatMinutes(total + slotMinutes),
+        enabledRoomIds: [],
       })
     }
   }

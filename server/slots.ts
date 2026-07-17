@@ -5,7 +5,9 @@ import type { Booking, RoomId, TimeSlot } from './types.js'
 
 export function generateDaySlots(dateIso: string): { startAt: string; endAt: string }[] {
   const { timeBlocks } = getScheduleForDate(dateIso)
-  return timeBlocks.map((block) => blockToIsoRange(dateIso, block))
+  return timeBlocks
+    .filter((block) => block.enabledRoomIds.length > 0)
+    .map((block) => blockToIsoRange(dateIso, block))
 }
 
 function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
@@ -17,7 +19,10 @@ export function buildAvailability(
   roomId: RoomId,
   bookings: Booking[],
 ): TimeSlot[] {
-  const daySlots = generateDaySlots(dateIso)
+  const { timeBlocks } = getScheduleForDate(dateIso)
+  const daySlots = timeBlocks
+    .filter((block) => block.enabledRoomIds.includes(roomId))
+    .map((block) => blockToIsoRange(dateIso, block))
   const roomBookings = bookings.filter(
     (b) => b.roomId === roomId && b.status === 'confirmed',
   )

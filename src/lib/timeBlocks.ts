@@ -12,4 +12,6 @@ export {
   formatTimeBlocksSummary,
   buildEndOptionsForStart,
   blockToIsoRange,
+  findBlockForStart,
+  unionRoomIds,
 } from '../../server/timeBlocks'

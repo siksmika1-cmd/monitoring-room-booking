@@ -52,18 +52,22 @@ export interface TimeSlot {
 export interface TimeBlock {
   start: string
   end: string
+  enabledRoomIds: RoomId[]
 }
 
 export type WeekdayKey = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'
 
 export interface DaySchedule {
   timeBlocks: TimeBlock[]
-  enabledRoomIds: RoomId[]
+  /** @deprecated 마이그레이션용 — timeBlocks[].enabledRoomIds 로 이전 */
+  enabledRoomIds?: RoomId[]
 }
 
 export interface AppSettings {
   slotMinutes: number
   weekdaySchedules: Record<WeekdayKey, DaySchedule>
+  /** 관리자 지정 예약 불가 날짜 (YYYY-MM-DD) */
+  blockedDates?: string[]
   /** 설정 저장 시각 (달력·예약 캐시 갱신용) */
   updatedAt?: string
   /** @deprecated 마이그레이션용 */

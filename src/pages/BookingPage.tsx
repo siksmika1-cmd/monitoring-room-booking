@@ -8,7 +8,7 @@ import { createBooking, fetchAvailability, fetchSettings } from '@/lib/api'
 import { BOOKING_PAGE_TITLE } from '@/lib/constants'
 import { useEmbed } from '@/lib/embed'
 import { formatHoursRange, formatKoreanDate, todayIso } from '@/lib/format'
-import { getDaySchedule, roomsForDate } from '@/lib/schedule'
+import { isDayScheduled, roomsForDate } from '@/lib/schedule'
 import type { AppSettings, Booking, Room, RoomId, TimeSlot } from '@/lib/types'
 
 interface BookingPageProps {
@@ -16,7 +16,10 @@ interface BookingPageProps {
 }
 
 function scheduleRevision(settings: AppSettings): string {
-  return settings.updatedAt ?? JSON.stringify(settings.weekdaySchedules)
+  return (
+    settings.updatedAt ??
+    JSON.stringify({ schedules: settings.weekdaySchedules, blocked: settings.blockedDates })
+  )
 }
 
 function mergeSlots(availabilityByRoom: Partial<Record<RoomId, TimeSlot[]>>): TimeSlot[] {
@@ -88,7 +91,7 @@ export function BookingPage({ onBooked }: BookingPageProps) {
   }, [selectedSlot, enabledRooms, availabilityByRoom])
   const room = roomId ? roomsForSelectedSlot.find((r) => r.id === roomId) : undefined
   const roomSlots = room ? (availabilityByRoom[room.id] ?? []) : []
-  const daySchedule = settings ? getDaySchedule(settings, date) : null
+  const dayScheduled = settings ? isDayScheduled(settings, date) : false
 
   useEffect(() => {
     loadSettings()
@@ -149,7 +152,7 @@ export function BookingPage({ onBooked }: BookingPageProps) {
     }
   }, [selectedSlot, roomsForSelectedSlot, roomId])
 
-  if (settingsLoading || !settings || !daySchedule) {
+  if (settingsLoading || !settings) {
     return (
       <div className="flex min-h-[40dvh] flex-col items-center justify-center gap-2 px-4 text-center text-sm">
         {error ? (
@@ -208,7 +211,7 @@ export function BookingPage({ onBooked }: BookingPageProps) {
         />
       </div>
 
-      {enabledRooms.length > 0 && (
+      {dayScheduled && (
         <section className="mb-4 rounded-xl border border-slate-200 bg-white p-3">
           <h2 className="mb-2 text-xs font-semibold text-slate-700">시간 선택</h2>
           {error ? (

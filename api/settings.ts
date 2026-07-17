@@ -1,16 +1,19 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { ROOMS } from '../server/rooms.js'
-import { getSettings, updateSettings, verifyAdminPassword } from '../server/settingsStore.js'
+import { ensureSettingsLoaded, getSettings, updateSettings, verifyAdminPassword } from '../server/settingsStore.js'
 import type { AppSettings } from '../server/types.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  res.setHeader('Cache-Control', 'no-store')
 
   if (req.method === 'OPTIONS') return res.status(204).end()
 
   try {
+    await ensureSettingsLoaded()
+
     if (req.method === 'GET') {
       const settings = getSettings()
       return res.status(200).json({ settings, rooms: ROOMS })
@@ -25,7 +28,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'settings 필요' })
       }
 
-      const settings = updateSettings(body.settings)
+      const settings = await updateSettings(body.settings)
       return res.status(200).json({ settings, rooms: ROOMS })
     }
 
