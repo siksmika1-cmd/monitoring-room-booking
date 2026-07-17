@@ -5,86 +5,94 @@
       "timeBlocks": [
         {
           "start": "10:00",
-          "end": "11:00"
+          "end": "11:00",
+          "enabledRoomIds": [
+            "room-2p-a",
+            "room-2p-b"
+          ]
         },
         {
           "start": "11:00",
-          "end": "12:00"
+          "end": "12:00",
+          "enabledRoomIds": [
+            "room-2p-a",
+            "room-2p-b"
+          ]
         }
-      ],
-      "enabledRoomIds": [
-        "room-2p-a",
-        "room-2p-b"
       ]
     },
     "tue": {
       "timeBlocks": [
         {
           "start": "10:00",
-          "end": "11:00"
+          "end": "11:00",
+          "enabledRoomIds": [
+            "room-2p-a",
+            "room-2p-b"
+          ]
         },
         {
           "start": "11:00",
-          "end": "12:00"
+          "end": "12:00",
+          "enabledRoomIds": [
+            "room-2p-a",
+            "room-2p-b"
+          ]
         }
-      ],
-      "enabledRoomIds": [
-        "room-2p-a",
-        "room-2p-b"
       ]
     },
     "wed": {
       "timeBlocks": [
         {
           "start": "10:00",
-          "end": "11:00"
+          "end": "11:00",
+          "enabledRoomIds": [
+            "room-2p-a",
+            "room-2p-b"
+          ]
         },
         {
           "start": "11:00",
-          "end": "12:00"
+          "end": "12:00",
+          "enabledRoomIds": [
+            "room-2p-a",
+            "room-2p-b"
+          ]
         }
-      ],
-      "enabledRoomIds": [
-        "room-2p-a",
-        "room-2p-b"
       ]
     },
     "thu": {
       "timeBlocks": [
         {
           "start": "10:00",
-          "end": "11:00"
+          "end": "11:00",
+          "enabledRoomIds": [
+            "room-2p-a",
+            "room-2p-b"
+          ]
         },
         {
           "start": "11:00",
-          "end": "12:00"
+          "end": "12:00",
+          "enabledRoomIds": [
+            "room-2p-a",
+            "room-2p-b"
+          ]
         }
-      ],
-      "enabledRoomIds": [
-        "room-2p-a",
-        "room-2p-b"
       ]
     },
     "fri": {
-      "timeBlocks": [],
-      "enabledRoomIds": []
+      "timeBlocks": []
     },
     "sat": {
-      "timeBlocks": [],
-      "enabledRoomIds": [
-        "room-2p-a",
-        "room-2p-b",
-        "room-1p"
-      ]
+      "timeBlocks": []
     },
     "sun": {
-      "timeBlocks": [],
-      "enabledRoomIds": [
-        "room-2p-a",
-        "room-2p-b",
-        "room-1p"
-      ]
+      "timeBlocks": []
     }
   },
-  "updatedAt": "2026-07-06T12:32:36.399Z"
+  "blockedDates": [
+    "2026-07-28"
+  ],
+  "updatedAt": "2026-07-17T00:51:09.216Z"
 }
